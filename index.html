@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculateur de Patron de Perçage & G-Code</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0056b3">
+    <link rel="apple-touch-icon" href="icon.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #0056b3;
+            --secondary: #e9ecef;
+            --bg-color: #f4f7f6;
+            --box-bg: #ffffff;
+            --text: #333333;
+            --border: #dddddd;
+            --gcode-color: #d63384;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: var(--primary);
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .panel {
+            background-color: var(--box-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 320px;
+            /* Flexbox retiré ici pour éviter l'écrasement du canevas et du tableau */
+        }
+        .form-group {
+            margin-bottom: 12px;
+        }
+        .section-title {
+            margin-top: 25px;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            color: var(--primary);
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 5px;
+        }
+        label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #004494;
+        }
+        .export-btn {
+            background-color: #217346;
+        }
+        .export-btn:hover {
+            background-color: #1a5c38;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: var(--secondary);
+        }
+        .gcode-cell {
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--gcode-color);
+            font-weight: bold;
+            text-align: left;
+            padding-left: 15px;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 1px solid var(--border);
+            background-color: #fafafa;
+            border-radius: 4px;
+            max-width: 100%;
+            height: auto;
+        }
+        .signature {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border);
+            text-align: right;
+            font-size: 0.8em;
+            color: #777;
+            font-style: italic;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Calculateur de patron de perçage et générateur de Code-G</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Paramètres</h2>
+            
+            <div class="section-title">Géométrie du patron de perçage</div>
+            <div class="form-group">
+                <label>Unités</label>
+                <select id="units" onchange="calculer()">
+                    <option value="mm">Millimètres (mm)</option>
+                    <option value="in">Pouces (in)</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Centre X</label>
+                    <input type="number" id="centerX" value="0" step="any" oninput="calculer()">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Centre Y</label>
+                    <input type="number" id="centerY" value="0" step="any" oninput="calculer()">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Rayon du patron (R)</label>
+                <input type="number" id="radius" value="50" step="any" min="0.1" oninput="calculer()">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Nombre de trous (N)</label>
+                    <input type="number" id="holes" value="6" min="1" oninput="calculer()">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Angle 1er trou (°)</label>
+                    <input type="number" id="startAngle" value="0" step="any" oninput="calculer()">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Décimales d'affichage</label>
+                <select id="decimals" onchange="calculer()">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                </select>
+            </div>
+
+            <div class="section-title">Paramètres CNC (G-Code)</div>
+            <div class="form-group">
+                <label>Type d'opération</label>
+                <select id="gcodeType" onchange="calculer()">
+                    <option value="G81">G81 (Cycle de perçage standard)</option>
+                    <option value="G00">G00 (Déplacement rapide positionnel)</option>
+                    <option value="COORD">Coordonnées simples (Sans préfixe)</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>Prof. Z (Z)</label>
+                    <input type="number" id="zDepth" value="-5" step="any" oninput="calculer()">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>Plan de retrait (R)</label>
+                    <input type="number" id="rPlane" value="2" step="any" oninput="calculer()">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Avance (F)</label>
+                <input type="number" id="feedRate" value="150" step="any" oninput="calculer()">
+            </div>
+            
+            <button class="export-btn" onclick="exporterExcel()">Sauvegarder vers Excel</button>
+        </div>
+
+        <div class="panel">
+            <h2>Visualisation</h2>
+            <canvas id="canvas" width="400" height="400"></canvas>
+            <p style="text-align: center; font-size: 0.8em; color: #666; margin-top: 10px;">Le zéro pièce (0,0) est représenté par la croix rouge si elle est dans le champ de vision.</p>
+            
+            <div class="signature">
+                Conception : Daniel Brouillette (2026)<br>
+                Programmation : Gemini PRO
+            </div>
+        </div>
+
+        <div class="panel" style="flex: 1.5;">
+            <h2>Coordonnées et Code-G</h2>
+            <table id="resultTable">
+                <thead>
+                    <tr>
+                        <th>Trou #</th>
+                        <th>Angle (°)</th>
+                        <th id="headerX">Position X</th>
+                        <th id="headerY">Position Y</th>
+                        <th>Sortie G-Code</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let donneesExcelGlobales = [];
+
+        function calculer() {
+            const units = document.getElementById('units').value;
+            const cx = parseFloat(document.getElementById('centerX').value) || 0;
+            const cy = parseFloat(document.getElementById('centerY').value) || 0;
+            const r = parseFloat(document.getElementById('radius').value) || 0;
+            const n = parseInt(document.getElementById('holes').value) || 1;
+            const startAngle = parseFloat(document.getElementById('startAngle').value) || 0;
+            const dec = parseInt(document.getElementById('decimals').value);
+
+            document.getElementById('headerX').innerText = `Position X (${units})`;
+            document.getElementById('headerY').innerText = `Position Y (${units})`;
+
+            const gcodeType = document.getElementById('gcodeType').value;
+            const zDepth = parseFloat(document.getElementById('zDepth').value) || 0;
+            const rPlane = parseFloat(document.getElementById('rPlane').value) || 0;
+            const feedRate = parseFloat(document.getElementById('feedRate').value) || 0;
+
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = ''; 
+            
+            let holesData = [];
+            donneesExcelGlobales = []; 
+            const angleIncrement = 360 / n;
+
+            for (let i = 0; i < n; i++) {
+                let angleDeg = startAngle + (i * angleIncrement);
+                let angleRad = angleDeg * (Math.PI / 180);
+
+                let x = cx + (r * Math.cos(angleRad));
+                let y = cy + (r * Math.sin(angleRad));
+
+                let xStr = x.toFixed(dec);
+                let yStr = y.toFixed(dec);
+                let angleStr = (angleDeg % 360).toFixed(1);
+
+                let gcodeLine = "";
+                if (gcodeType === 'G81') {
+                    if (i === 0) {
+                        gcodeLine = `G81 X${xStr} Y${yStr} Z${zDepth.toFixed(dec)} R${rPlane.toFixed(dec)} F${feedRate}`;
+                    } else {
+                        gcodeLine = `X${xStr} Y${yStr}`;
+                    }
+                } else if (gcodeType === 'G00') {
+                    gcodeLine = `G00 X${xStr} Y${yStr}`;
+                } else {
+                    gcodeLine = `X${xStr} Y${yStr}`;
+                }
+
+                holesData.push({ id: i + 1, angle: angleStr, x: xStr, y: yStr, rad: angleRad });
+
+                donneesExcelGlobales.push({
+                    id: i + 1,
+                    angle: Number(angleStr),
+                    x: Number(xStr),
+                    y: Number(yStr),
+                    gcode: gcodeLine
+                });
+
+                let row = `<tr>
+                    <td>${i + 1}</td>
+                    <td>${angleStr}</td>
+                    <td>${xStr}</td>
+                    <td>${yStr}</td>
+                    <td class="gcode-cell">${gcodeLine}</td>
+                </tr>`;
+                tableBody.innerHTML += row;
+            }
+
+            dessinerPatron(holesData, r, n, cx, cy);
+        }
+
+        function dessinerPatron(holesData, r, n, cx, cy) {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const cw = canvas.width;
+            const ch = canvas.height;
+            const center = cw / 2;
+
+            ctx.clearRect(0, 0, cw, ch);
+
+            if (r <= 0 || n < 1) return;
+
+            const margin = 40;
+            const maxDimension = Math.max(Math.abs(cx) + r, Math.abs(cy) + r, r);
+            const scale = (cw / 2 - margin) / (maxDimension === 0 ? 1 : maxDimension);
+
+            const toCanvasX = (realX) => center + (realX * scale);
+            const toCanvasY = (realY) => center - (realY * scale);
+
+            let origX = toCanvasX(0);
+            let origY = toCanvasY(0);
+            ctx.beginPath();
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 1;
+            ctx.moveTo(origX - 10, origY); ctx.lineTo(origX + 10, origY);
+            ctx.moveTo(origX, origY - 10); ctx.lineTo(origX, origY + 10);
+            ctx.stroke();
+
+            let canvasCx = toCanvasX(cx);
+            let canvasCy = toCanvasY(cy);
+
+            ctx.beginPath();
+            ctx.setLineDash([5, 5]);
+            ctx.arc(canvasCx, canvasCy, r * scale, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#0056b3';
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            holesData.forEach(hole => {
+                let drawX = toCanvasX(parseFloat(hole.x));
+                let drawY = toCanvasY(parseFloat(hole.y));
+
+                ctx.beginPath();
+                ctx.arc(drawX, drawY, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ff4500';
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.stroke();
+
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(hole.id, drawX + 10, drawY - 10);
+            });
+            
+            ctx.beginPath();
+            ctx.arc(canvasCx, canvasCy, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = '#0056b3';
+            ctx.fill();
+        }
+
+        function exporterExcel() {
+            var wb = XLSX.utils.book_new();
+            
+            wb.Props = {
+                Title: "Calculateur de Patron de Perçage",
+                Author: "Daniel Brouillette",
+                Company: "Gemini PRO",
+                CreatedDate: new Date()
+            };
+
+            const units = document.getElementById('units').value;
+
+            var dataInputs = [
+                ["Paramètre", "Valeur"],
+                ["Unité de mesure", units],
+                ["Centre X", Number(document.getElementById('centerX').value)],
+                ["Centre Y", Number(document.getElementById('centerY').value)],
+                ["Rayon du patron", Number(document.getElementById('radius').value)],
+                ["Nombre de trous", Number(document.getElementById('holes').value)],
+                ["Angle de départ (°)", Number(document.getElementById('startAngle').value)],
+                ["", ""], 
+                ["Paramètres CNC", ""],
+                ["Type G-Code", document.getElementById('gcodeType').value],
+                ["Profondeur Z", Number(document.getElementById('zDepth').value)],
+                ["Plan de retrait R", Number(document.getElementById('rPlane').value)],
+                ["Avance F", Number(document.getElementById('feedRate').value)],
+                ["", ""],
+                ["", ""],
+                ["Conception :", "Daniel Brouillette (2026)"],
+                ["Programmation :", "Gemini PRO"]
+            ];
+            var wsInputs = XLSX.utils.aoa_to_sheet(dataInputs);
+            wsInputs['!cols'] = [{wch: 25}, {wch: 25}];
+            XLSX.utils.book_append_sheet(wb, wsInputs, "Paramètres");
+
+            var dataResults = [
+                ["Trou #", "Angle (°)", `Position X (${units})`, `Position Y (${units})`, "Sortie G-Code"]
+            ];
+            
+            donneesExcelGlobales.forEach(hole => {
+                dataResults.push([hole.id, hole.angle, hole.x, hole.y, hole.gcode]);
+            });
+
+            var wsResults = XLSX.utils.aoa_to_sheet(dataResults);
+            wsResults['!cols'] = [{wch: 10}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 35}];
+            XLSX.utils.book_append_sheet(wb, wsResults, "Coordonnées & Code");
+
+            XLSX.writeFile(wb, "Calcul_Patron_GCode.xlsx");
+        }
+
+        window.onload = calculer;
+    </script>
+    <script>
+        // Enregistrement du Service Worker pour le mode hors-ligne
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Mode hors-ligne activé !'))
+                    .catch(err => console.log('Erreur hors-ligne :', err));
+            });
+        }
+    </script>
+</body>
+</html>
+</body>
+</html>
