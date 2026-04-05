@@ -1,0 +1,16 @@
+{
+  "name": "Calculateur CNC Patron de Perçage",
+  "short_name": "Calc CNC",
+  "description": "Calcul de coordonnées cartésiennes et G-Code pour l'usinage.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0056b3",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
