@@ -43,6 +43,7 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             flex: 1;
             min-width: 320px;
+            display: block;
         }
         .form-group {
             margin-bottom: 12px;
@@ -112,9 +113,14 @@
             text-align: left;
             padding-left: 15px;
         }
+        .canvas-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
         canvas {
             display: block;
-            margin: 0 auto;
             border: 1px solid var(--border);
             background-color: #fafafa;
             border-radius: 4px;
@@ -131,6 +137,23 @@
             font-style: italic;
             line-height: 1.5;
         }
+        .reminder-box {
+            background-color: #eaf4ff;
+            border-left: 4px solid var(--primary);
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .code-highlight {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            color: var(--gcode-color);
+            background-color: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
@@ -140,7 +163,6 @@
     <div class="container">
         <div class="panel">
             <h2>Paramètres</h2>
-            
             <div class="section-title">Géométrie du patron de perçage</div>
             <div class="form-group">
                 <label>Unités</label>
@@ -159,7 +181,6 @@
                     <input type="number" id="centerY" value="0" step="any" oninput="calculer()">
                 </div>
             </div>
-            
             <div style="display: flex; gap: 10px;">
                 <div class="form-group" style="flex: 1;">
                     <label>Dimension fournie</label>
@@ -173,7 +194,6 @@
                     <input type="number" id="dimensionValue" value="50" step="any" min="0.1" oninput="calculer()">
                 </div>
             </div>
-
             <div style="display: flex; gap: 10px;">
                 <div class="form-group" style="flex: 1;">
                     <label>Nombre de trous (N)</label>
@@ -194,7 +214,6 @@
             </div>
 
             <div class="section-title">Paramètres CNC (G-Code)</div>
-            
             <div class="form-group">
                 <label>Type de Code-G</label>
                 <select id="gcodeType" onchange="calculer()">
@@ -203,11 +222,10 @@
                     <option value="SIEMENS_ISO">Code-G Siemens ISO (G291)</option>
                 </select>
             </div>
-
             <div style="display: flex; gap: 10px;">
                 <div class="form-group" style="flex: 1;">
                     <label>Prof. Z (Z)</label>
-                    <input type="number" id="zDepth" value="-5" step="any" oninput="calculer()">
+                    <input type="number" id="zDepth" value="0" step="any" oninput="calculer()">
                 </div>
                 <div class="form-group" style="flex: 1;">
                     <label>Plan de retrait (R)</label>
@@ -215,18 +233,28 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>Avance (F)</label>
-                <input type="number" id="feedRate" value="150" step="any" oninput="calculer()">
+                <label>Type d'avance</label>
+                <select id="feedType" onchange="calculer()">
+                    <option value="G94">Avance / minute (G94)</option>
+                    <option value="G95">Avance / tour (G95)</option>
+                </select>
             </div>
-            
+            <div class="form-group">
+                <label>Avance (F)</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="number" id="feedRate" value="0" step="any" oninput="calculer()" style="flex: 1;">
+                    <span id="feedUnitLabel" style="width: 70px; font-weight: bold; font-size: 0.9em; color: #555;">mm/min</span>
+                </div>
+            </div>
             <button class="export-btn" onclick="exporterExcel()">Sauvegarder vers Excel</button>
         </div>
 
         <div class="panel">
             <h2>Visualisation</h2>
-            <canvas id="canvas" width="400" height="400"></canvas>
+            <div class="canvas-container">
+                <canvas id="canvas" width="400" height="400"></canvas>
+            </div>
             <p style="text-align: center; font-size: 0.8em; color: #666; margin-top: 10px;">Le zéro pièce (0,0) est représenté par la croix rouge si elle est dans le champ de vision.</p>
-            
             <div class="signature">
                 Conception : Daniel Brouillette (2026)<br>
                 Programmation : Gemini PRO
@@ -235,6 +263,7 @@
 
         <div class="panel" style="flex: 1.5;">
             <h2>Coordonnées et Code-G</h2>
+            <div class="reminder-box" id="gcodeReminder"></div>
             <table id="resultTable">
                 <thead>
                     <tr>
@@ -245,8 +274,7 @@
                         <th>Sortie G-Code</th>
                     </tr>
                 </thead>
-                <tbody id="tableBody">
-                    </tbody>
+                <tbody id="tableBody"></tbody>
             </table>
         </div>
     </div>
@@ -254,27 +282,19 @@
     <script>
         let donneesExcelGlobales = [];
 
-        // Fonction pour mettre à jour le texte de l'étiquette (Rayon vs Diamètre)
         function changerLabelDimension() {
             const dimType = document.getElementById('dimType').value;
             const label = document.getElementById('labelDimension');
-            if (dimType === 'diametre') {
-                label.innerText = 'Diamètre du patron (D)';
-            } else {
-                label.innerText = 'Rayon du patron (R)';
-            }
+            label.innerText = (dimType === 'diametre') ? 'Diamètre du patron (D)' : 'Rayon du patron (R)';
         }
 
         function calculer() {
             const units = document.getElementById('units').value;
             const cx = parseFloat(document.getElementById('centerX').value) || 0;
             const cy = parseFloat(document.getElementById('centerY').value) || 0;
-            
-            // Calcul du rayon basé sur le choix de l'utilisateur
             const dimType = document.getElementById('dimType').value;
             const dimValue = parseFloat(document.getElementById('dimensionValue').value) || 0;
             const r = dimType === 'diametre' ? dimValue / 2 : dimValue;
-
             const n = parseInt(document.getElementById('holes').value) || 1;
             const startAngle = parseFloat(document.getElementById('startAngle').value) || 0;
             const dec = parseInt(document.getElementById('decimals').value);
@@ -285,11 +305,18 @@
             const gcodeType = document.getElementById('gcodeType').value;
             const zDepth = parseFloat(document.getElementById('zDepth').value) || 0;
             const rPlane = parseFloat(document.getElementById('rPlane').value) || 0;
+            const feedType = document.getElementById('feedType').value; 
             const feedRate = parseFloat(document.getElementById('feedRate').value) || 0;
+
+            let feedLabel = (units === "mm") ? (feedType === "G94" ? "mm/min" : "mm/tr") : (feedType === "G94" ? "po/min" : "po/tr");
+            document.getElementById('feedUnitLabel').innerText = feedLabel;
+
+            let codeUnite = (gcodeType === 'SIEMENS_NATIF') ? (units === 'mm' ? 'G71' : 'G70') : (units === 'mm' ? 'G21' : 'G20');
+            let mode = (gcodeType === 'SIEMENS_ISO' ? 'G291' : (gcodeType === 'SIEMENS_NATIF' ? 'G290' : ''));
+            document.getElementById('gcodeReminder').innerHTML = `<strong>Codes actifs :</strong> ${mode ? '<span class="code-highlight">'+mode+'</span> | ' : ''} Unités : <span class="code-highlight">${codeUnite}</span> | Avance : <span class="code-highlight">${feedType}</span>`;
 
             const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = ''; 
-            
             let holesData = [];
             donneesExcelGlobales = []; 
             const angleIncrement = 360 / n;
@@ -297,186 +324,71 @@
             for (let i = 0; i < n; i++) {
                 let angleDeg = startAngle + (i * angleIncrement);
                 let angleRad = angleDeg * (Math.PI / 180);
-
                 let x = cx + (r * Math.cos(angleRad));
                 let y = cy + (r * Math.sin(angleRad));
-
-                let xStr = x.toFixed(dec);
-                let yStr = y.toFixed(dec);
-                let angleStr = (angleDeg % 360).toFixed(1);
+                let xStr = x.toFixed(dec), yStr = y.toFixed(dec), angleStr = (angleDeg % 360).toFixed(1);
 
                 let gcodeLine = "";
-                
-                // Génération spécifique selon le contrôleur
                 if (gcodeType === 'FANUC') {
-                    if (i === 0) {
-                        gcodeLine = `G81 X${xStr} Y${yStr} Z${zDepth.toFixed(dec)} R${rPlane.toFixed(dec)} F${feedRate}`;
-                    } else {
-                        gcodeLine = `X${xStr} Y${yStr}`;
-                    }
+                    gcodeLine = (i === 0) ? `G81 X${xStr} Y${yStr} Z${zDepth.toFixed(dec)} R${rPlane.toFixed(dec)} F${feedRate}` : `X${xStr} Y${yStr}`;
                 } else if (gcodeType === 'SIEMENS_ISO') {
-                    if (i === 0) {
-                        gcodeLine = `G291 G81 X${xStr} Y${yStr} Z${zDepth.toFixed(dec)} R${rPlane.toFixed(dec)} F${feedRate}`;
-                    } else {
-                        gcodeLine = `X${xStr} Y${yStr}`;
-                    }
+                    gcodeLine = (i === 0) ? `G291 G81 X${xStr} Y${yStr} Z${zDepth.toFixed(dec)} R${rPlane.toFixed(dec)} F${feedRate}` : `X${xStr} Y${yStr}`;
                 } else if (gcodeType === 'SIEMENS_NATIF') {
-                    if (i === 0) {
-                        // Paramètres CYCLE81(RTP, RFP, SDIS, DP, DPR)
-                        let sdis = units === 'mm' ? 2 : 0.1; // Dégagement de sécurité arbitraire
-                        gcodeLine = `MCALL CYCLE81(${rPlane.toFixed(dec)}, 0, ${sdis}, ${zDepth.toFixed(dec)}, 0) X${xStr} Y${yStr}`;
-                    } else {
-                        gcodeLine = `X${xStr} Y${yStr}`;
-                    }
+                    let sdis = units === 'mm' ? 2 : 0.1;
+                    gcodeLine = (i === 0) ? `MCALL CYCLE81(${rPlane.toFixed(dec)}, 0, ${sdis}, ${zDepth.toFixed(dec)}, 0) X${xStr} Y${yStr} F${feedRate}` : `X${xStr} Y${yStr}`;
                 }
 
                 holesData.push({ id: i + 1, angle: angleStr, x: xStr, y: yStr, rad: angleRad });
-
-                donneesExcelGlobales.push({
-                    id: i + 1,
-                    angle: Number(angleStr),
-                    x: Number(xStr),
-                    y: Number(yStr),
-                    gcode: gcodeLine
-                });
-
-                let row = `<tr>
-                    <td>${i + 1}</td>
-                    <td>${angleStr}</td>
-                    <td>${xStr}</td>
-                    <td>${yStr}</td>
-                    <td class="gcode-cell">${gcodeLine}</td>
-                </tr>`;
-                tableBody.innerHTML += row;
+                donneesExcelGlobales.push({ id: i + 1, angle: Number(angleStr), x: Number(xStr), y: Number(yStr), gcode: gcodeLine });
+                tableBody.innerHTML += `<tr><td>${i+1}</td><td>${angleStr}</td><td>${xStr}</td><td>${yStr}</td><td class="gcode-cell">${gcodeLine}</td></tr>`;
             }
-
             dessinerPatron(holesData, r, n, cx, cy);
         }
 
         function dessinerPatron(holesData, r, n, cx, cy) {
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
-            const cw = canvas.width;
-            const ch = canvas.height;
-            const center = cw / 2;
-
+            const cw = canvas.width, ch = canvas.height, center = cw / 2;
             ctx.clearRect(0, 0, cw, ch);
-
             if (r <= 0 || n < 1) return;
-
             const margin = 40;
             const maxDimension = Math.max(Math.abs(cx) + r, Math.abs(cy) + r, r);
             const scale = (cw / 2 - margin) / (maxDimension === 0 ? 1 : maxDimension);
+            const toX = (val) => center + (val * scale), toY = (val) => center - (val * scale);
 
-            const toCanvasX = (realX) => center + (realX * scale);
-            const toCanvasY = (realY) => center - (realY * scale);
-
-            let origX = toCanvasX(0);
-            let origY = toCanvasY(0);
-            ctx.beginPath();
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 1;
-            ctx.moveTo(origX - 10, origY); ctx.lineTo(origX + 10, origY);
-            ctx.moveTo(origX, origY - 10); ctx.lineTo(origX, origY + 10);
-            ctx.stroke();
-
-            let canvasCx = toCanvasX(cx);
-            let canvasCy = toCanvasY(cy);
-
-            ctx.beginPath();
-            ctx.setLineDash([5, 5]);
-            ctx.arc(canvasCx, canvasCy, r * scale, 0, 2 * Math.PI);
-            ctx.strokeStyle = '#0056b3';
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            holesData.forEach(hole => {
-                let drawX = toCanvasX(parseFloat(hole.x));
-                let drawY = toCanvasY(parseFloat(hole.y));
-
-                ctx.beginPath();
-                ctx.arc(drawX, drawY, 6, 0, 2 * Math.PI);
-                ctx.fillStyle = '#ff4500';
-                ctx.fill();
-                ctx.strokeStyle = '#333';
-                ctx.stroke();
-
-                ctx.fillStyle = '#333';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(hole.id, drawX + 10, drawY - 10);
+            ctx.beginPath(); ctx.strokeStyle = '#ff0000'; ctx.moveTo(toX(0)-10, toY(0)); ctx.lineTo(toX(0)+10, toY(0)); ctx.moveTo(toX(0), toY(0)-10); ctx.lineTo(toX(0), toY(0)+10); ctx.stroke();
+            ctx.beginPath(); ctx.setLineDash([5, 5]); ctx.arc(toX(cx), toY(cy), r * scale, 0, 2 * Math.PI); ctx.strokeStyle = '#0056b3'; ctx.stroke(); ctx.setLineDash([]);
+            holesData.forEach(h => {
+                ctx.beginPath(); ctx.arc(toX(parseFloat(h.x)), toY(parseFloat(h.y)), 6, 0, 2 * Math.PI); ctx.fillStyle = '#ff4500'; ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#333'; ctx.font = 'bold 12px Arial'; ctx.fillText(h.id, toX(parseFloat(h.x)) + 10, toY(parseFloat(h.y)) - 10);
             });
-            
-            ctx.beginPath();
-            ctx.arc(canvasCx, canvasCy, 3, 0, 2 * Math.PI);
-            ctx.fillStyle = '#0056b3';
-            ctx.fill();
         }
 
         function exporterExcel() {
             var wb = XLSX.utils.book_new();
-            
-            wb.Props = {
-                Title: "Calculateur de Patron de Perçage",
-                Author: "Daniel Brouillette",
-                Company: "Gemini PRO",
-                CreatedDate: new Date()
-            };
-
+            wb.Props = { Title: "Patron de Perçage", Author: "Daniel Brouillette", Company: "Gemini PRO", CreatedDate: new Date() };
             const units = document.getElementById('units').value;
-            const dimType = document.getElementById('dimType').value;
-            const dimLabel = dimType === 'diametre' ? "Diamètre du patron" : "Rayon du patron";
+            const feedType = document.getElementById('feedType').options[document.getElementById('feedType').selectedIndex].text;
+            const feedUnit = document.getElementById('feedUnitLabel').innerText;
 
             var dataInputs = [
-                ["Paramètre", "Valeur"],
-                ["Unité de mesure", units],
-                ["Centre X", Number(document.getElementById('centerX').value)],
-                ["Centre Y", Number(document.getElementById('centerY').value)],
-                [dimLabel, Number(document.getElementById('dimensionValue').value)],
-                ["Nombre de trous", Number(document.getElementById('holes').value)],
-                ["Angle de départ (°)", Number(document.getElementById('startAngle').value)],
-                ["", ""], 
-                ["Paramètres CNC", ""],
-                ["Type G-Code", document.getElementById('gcodeType').options[document.getElementById('gcodeType').selectedIndex].text],
-                ["Profondeur Z", Number(document.getElementById('zDepth').value)],
-                ["Plan de retrait R", Number(document.getElementById('rPlane').value)],
-                ["Avance F", Number(document.getElementById('feedRate').value)],
-                ["", ""],
-                ["", ""],
-                ["Conception :", "Daniel Brouillette (2026)"],
-                ["Programmation :", "Gemini PRO"]
+                ["Paramètre", "Valeur"], ["Unités", units], ["Centre X", Number(document.getElementById('centerX').value)], ["Centre Y", Number(document.getElementById('centerY').value)],
+                ["Dimension", Number(document.getElementById('dimensionValue').value)], ["Trous", Number(document.getElementById('holes').value)],
+                ["CNC", document.getElementById('gcodeType').options[document.getElementById('gcodeType').selectedIndex].text], ["Type Avance", feedType], ["F", Number(document.getElementById('feedRate').value) + " " + feedUnit]
             ];
-            var wsInputs = XLSX.utils.aoa_to_sheet(dataInputs);
-            wsInputs['!cols'] = [{wch: 25}, {wch: 25}];
-            XLSX.utils.book_append_sheet(wb, wsInputs, "Paramètres");
-
-            var dataResults = [
-                ["Trou #", "Angle (°)", `Position X (${units})`, `Position Y (${units})`, "Sortie G-Code"]
-            ];
-            
-            donneesExcelGlobales.forEach(hole => {
-                dataResults.push([hole.id, hole.angle, hole.x, hole.y, hole.gcode]);
-            });
-
-            var wsResults = XLSX.utils.aoa_to_sheet(dataResults);
-            wsResults['!cols'] = [{wch: 10}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 45}];
-            XLSX.utils.book_append_sheet(wb, wsResults, "Coordonnées & Code");
-
-            XLSX.writeFile(wb, "Calcul_Patron_GCode.xlsx");
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataInputs), "Paramètres");
+            var dataRes = [["#", "Angle", `X (${units})`, `Y (${units})`, "G-Code"]];
+            donneesExcelGlobales.forEach(h => dataRes.push([h.id, h.angle, h.x, h.y, h.gcode]));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataRes), "Résultats");
+            XLSX.writeFile(wb, "Calcul_CNC.xlsx");
         }
 
-        // Initialisation au chargement de la page
-        window.onload = function() {
-            changerLabelDimension();
-            calculer();
-        };
+        window.onload = () => { changerLabelDimension(); calculer(); };
     </script>
     <script>
-        // Enregistrement du Service Worker pour le mode hors-ligne
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('Mode hors-ligne activé !'))
-                    .catch(err => console.log('Erreur hors-ligne :', err));
+                navigator.serviceWorker.register('./sw.js').then(reg => { reg.update(); });
             });
         }
     </script>
